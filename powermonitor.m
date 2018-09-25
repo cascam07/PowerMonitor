@@ -22,7 +22,7 @@ function varargout = powermonitor(varargin)
 
 % Edit the above text to modify the response to help powermonitor
 
-% Last Modified by GUIDE v2.5 17-Sep-2018 08:36:35
+% Last Modified by GUIDE v2.5 24-Sep-2018 11:56:20
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -55,18 +55,21 @@ function powermonitor_OpeningFcn(hObject, eventdata, handles, varargin)
 % Choose default command line output for powermonitor
 handles.output = hObject;
 
-% Initialize some storage variables
+% Initialize some variables
 handles.data.power = [];
 handles.data.times = [];
 handles.freqres = 0.5;
 handles.lockthr = false;
+handles.channels = 1:256;
+handles.regions.front = [2,3,4,5,10,11,12,13,14,15,18,19,20,21,22,25,26,27,28,29,31,32,33,34,35,37,38,39,46,47];
+handles.regions.central = [57,50,42,24,16,7,207,206,205,204,64,58,51,43,17,8,198,197,196,195,194,71,65,59,52,44,9,186,185,184,183,182,181,72,66,60,53,45,132,144,155,164,173,76,77,78,79,81,131,143,154,163,172,88,89,90,130,142];
+handles.regions.posterior = [96,97,98,110,119,128,152,161,170,106,107,108,109,140,151,160,169,114,115,116,117,118,127,139,150,159,168,122,123,124,125,126,138,149,158,167,135,136,137,148,157,147];
+handles.regions.l_temporal = [243,242,241,247,246,245,244,251,250,249,248,252,256,255,254,253,67,73,82,68,69,91,92,74,93,83,94,102,103,104,111];
+handles.regions.r_temporal = [238,239,240,234,235,236,237,230,226,231,232,225,227,233,219,228,218,210,229,217,202,192,216,191,209,190,201,189,200,208,199];
+
 eeglab
-path1 = getenv('PATH');
-path1 = ['/anaconda3/bin/:' path1];
-setenv('PATH',path1);
 handles.EEG = pop_loadset('EEG_Template.set');
-handles.channel_locs = 'chanlocs_prop256.sfp';
-handles.pyscript = 'GetMffData.py';
+handles.EEG.chanlocs = readlocs('chanlocs_prop256.sfp');
 % Update handles structure
 guidata(hObject, handles);
 
@@ -161,7 +164,7 @@ refrate = str2num(hObject.String);
 lowfreq = str2num(handles.LowFreqTextBox.String);
 if isempty(lowfreq)
     hObject.String = '10';
-    warndlg('Input but be numeric');
+    warndlg('Input must be numeric');
 elseif refrate < (1/lowfreq)*10 || refrate < 5 %Ensure we have at least 10 cycles of data
     hObject.String = '10';
     warndlg('Input cannot be less than (1/LowFreq)*10 with an absolute minimum of 5');    
@@ -190,7 +193,7 @@ function LowFreqTextBox_Callback(hObject, eventdata, handles)
 lowfreq = hObject.String;
 if isempty(str2num(lowfreq))
     hObject.String = '1';
-    warndlg('Input but be numeric');
+    warndlg('Input must be numeric');
 end
 
 % --- Executes during object creation, after setting all properties.
@@ -217,7 +220,7 @@ function HighFreqTextBox_Callback(hObject, eventdata, handles)
 highfreq = hObject.String;
 if isempty(str2num(highfreq))
     hObject.String = '40';
-    warndlg('Input but be numeric');
+    warndlg('Input must be numeric');
 end
 if str2num(highfreq) <= str2num(handles.LowFreqTextBox.String)
     warndlg('Upper limit must be larger than lower limit');
@@ -247,7 +250,7 @@ function ThrTextBox_Callback(hObject, eventdata, handles)
 thr = hObject.String;
 if isempty(str2num(thr))
     hObject.String = '80';
-    warndlg('Input but be numeric');
+    warndlg('Input must be numeric');
 end
 
 % --- Executes during object creation, after setting all properties.
@@ -338,11 +341,17 @@ function StartButton_Callback(hObject, eventdata, handles)
 pathname = handles.FilepathTextBox.String;
 if(exist(pathname, 'file') == 7)
     handles.PauseButton.Enable = 'on';
+    handles.LockThrButton.Enable = 'on';
     handles.StartButton.Enable = 'off';
     handles.LowFreqTextBox.Enable = 'off';
     handles.HighFreqTextBox.Enable = 'off';
     handles.RefreshRateTextBox.Enable = 'off';
-    handles.LockThrButton.Enable = 'on';
+    handles.ChanTextBox.Enable = 'off';
+    handles.FrontalCheck.Enable = 'off';
+    handles.CentralCheck.Enable = 'off';
+    handles.LTempCheck.Enable = 'off';
+    handles.RTempCheck.Enable = 'off';
+    handles.PosteriorCheck.Enable = 'off';
     
     handles.RunLoop = true;
     guidata(hObject, handles);
@@ -375,24 +384,18 @@ if(exist(pathname, 'file') == 7)
     while handles.RunLoop
         handles = guidata(hObject);
         currentTime = datetime(clock);
-        if (currentTime - lastTime) >= duration(0,0,refreshrate)            
-            %Generate some dummy data for testing purposes
-            %Replace with actual call to python script
-            
-            %eegdat = rand(257,1000);
-            %eegtimes = 1:1000;            
-            commandStr = ['python ' handles.pyscript ' "' handles.FilepathTextBox.String '" ' int2str(refreshrate)];
+        if (currentTime - lastTime) >= duration(0,0,refreshrate)                     
+            commandStr = ['python ' pyscript ' ' file ' ' int2str(refreshrate)];
             [status, commandOut] = system(commandStr);
             lastTime = datetime(clock);
             if status == 0
                 loadtime = str2double(commandOut);
                 sprintf('Load time was: %f',loadtime)
-                if loadtime > refreshrate
+                if loadtime > loadinterval
                    error('File load-time has exceeded the specified time interval.')
                 end
             end
         end
-        if(exist('Power.csv','file') == 2)
         powerfile = dir('Power.csv');
         if ~strcmp(powerfile.date, lastUpdated)
             disp('Updated') 
@@ -402,11 +405,10 @@ if(exist(pathname, 'file') == 7)
             
             %Update EEG object with most recent data
             EEG = handles.EEG;
-            EEG.data = eegdat;
+            EEG.data = eegdat(handles.channels,:);
+            EEG.chanlocs = EEG.chanlocs(handles.channels);
             EEG.times = eegtimes;
-            EEG = eeg_checkset(EEG);
-            EEG.data = EEG.data * 10^6; %Convert from volts to microvolts
-            EEG = pop_select(EEG, 'nochannel', 257);
+            EEG = eeg_checkset(EEG);       
             EEG = pop_eegfiltnew(EEG, 0.5, 40);
             EEG = pop_reref(EEG, []);
 
@@ -415,10 +417,13 @@ if(exist(pathname, 'file') == 7)
             bandpower = mean(dataPow(Band(1):Band(2),:),1);
             avgpower = mean(bandpower);
 
-            %Plot Most Recent Data
+            %Update data storage variables
             handles.data.power = [handles.data.power avgpower];
             handles.data.times = [handles.data.times currentTime];
             guidata(hObject, handles);
+            
+            %Calculate data range to display
+            axislims = [median(handles.data.power) - 3*mad(handles.data.power) median(handles.data.power) + 3*mad(handles.data.power)];
             
             %Data table
             prevdata = handles.PrevDataTable;
@@ -449,19 +454,20 @@ if(exist(pathname, 'file') == 7)
             %Topoplot
             axes(handles.TopoAxis);
             cla
-            topoplot(bandpower, handles.channel_locs); 
+            topoplot(bandpower, EEG.chanlocs); 
             title(sprintf('Power %d - %d Hz',lowfreq,highfreq));
             colorbar;
 
             %Histogram
             axes(handles.HistAxis);
             histogram(handles.data.power, 15)
+            xlim(axislims)
 
             %Scatter Plot
             thrlist_contents = cellstr(handles.ThrListBox.String)';
             axes(handles.ScatterAxis);
             scatter(handles.data.times, handles.data.power); hold on;
-            thr_val = Inf;
+            thr_val = 100;
             for thr_str = thrlist_contents %Add percentile threshold lines to plot
                 thr = str2num(cell2mat(thr_str));
                 if(isfield(handles,'LockIdx'))
@@ -474,6 +480,7 @@ if(exist(pathname, 'file') == 7)
             %Plot data above threshold as red
             color_points = handles.data.power > thr_val;
             scatter(handles.data.times(color_points), handles.data.power(color_points),'r'); hold off;
+            ylim(axislims)
 
             %Update GUI
             drawnow
@@ -484,7 +491,6 @@ if(exist(pathname, 'file') == 7)
             z = cell2mat(prevdata.Data(1,3));          %Current Time
             fprintf(handles.logfile, '%s, %s, %s\n',x, y, z); 
 
-        end
         end
         handles = guidata(hObject); %Update handles to check if the loop needs to break
     end
@@ -506,8 +512,6 @@ handles.RefreshRateTextBox.Enable = 'off';
 handles.RunLoop = false;
 guidata(hObject, handles);
 
-
-
 % --- Executes during object creation, after setting all properties.
 function ScatterAxis_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to ScatterAxis (see GCBO)
@@ -523,7 +527,6 @@ function TopoAxis_CreateFcn(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
-% Hint: place code in OpeningFcn to populate TopoAxis
 
 
 % --- Executes during object creation, after setting all properties.
@@ -532,7 +535,6 @@ function HistAxis_CreateFcn(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
-% Hint: place code in OpeningFcn to populate HistAxis
 
 
 % --- Executes during object creation, after setting all properties.
@@ -558,4 +560,129 @@ switch selection
         delete(hObject);
     case 'No'
         return
+end
+
+
+% --- Executes during object creation, after setting all properties.
+function ChanTextBox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to ChanTextBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+function ChanTextBox_Callback(hObject, eventdata, handles)
+% hObject    handle to ChanTextBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of ChanTextBox as text
+%        str2double(get(hObject,'String')) returns contents of ChanTextBox as a double
+channels = str2num(hObject.String);
+if isempty(channels)
+    hObject.String = '1:256';
+    warndlg('Input must be numeric');
+else
+    handles.channels = channels;
+    handles.FrontalCheck.Value = double(all(ismember(handles.regions.front,channels)));
+    handles.CentralCheck.Value = double(all(ismember(handles.regions.central,channels)));
+    handles.PosteriorCheck.Value = double(all(ismember(handles.regions.posterior,channels)));
+    handles.LTempCheck.Value = double(all(ismember(handles.regions.l_temporal,channels)));
+    handles.RTempCheck.Value = double(all(ismember(handles.regions.r_temporal,channels)));
+    guidata(hObject, handles);
+end
+
+% --- Executes on button press in FrontalCheck.
+function FrontalCheck_Callback(hObject, eventdata, handles)
+% hObject    handle to FrontalCheck (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of FrontalCheck
+checked = get(hObject,'Value');
+if checked
+    handles.channels = union(handles.channels, handles.regions.front);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+else
+    handles.channels = setdiff(handles.channels, handles.regions.front);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+end
+
+% --- Executes on button press in LTempCheck.
+function LTempCheck_Callback(hObject, eventdata, handles)
+% hObject    handle to LTempCheck (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of LTempCheck
+checked = get(hObject,'Value');
+if checked
+    handles.channels = union(handles.channels, handles.regions.l_temporal);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+else
+    handles.channels = setdiff(handles.channels, handles.regions.l_temporal);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+end
+
+% --- Executes on button press in RTempCheck.
+function RTempCheck_Callback(hObject, eventdata, handles)
+% hObject    handle to RTempCheck (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of RTempCheck
+checked = get(hObject,'Value');
+if checked
+    handles.channels = union(handles.channels, handles.regions.r_temporal);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+else
+    handles.channels = setdiff(handles.channels, handles.regions.r_temporal);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+end
+
+% --- Executes on button press in PosteriorCheck.
+function PosteriorCheck_Callback(hObject, eventdata, handles)
+% hObject    handle to PosteriorCheck (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of PosteriorCheck
+checked = get(hObject,'Value');
+if checked
+    handles.channels = union(handles.channels, handles.regions.posterior);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+else
+    handles.channels = setdiff(handles.channels, handles.regions.posterior);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+end
+
+% --- Executes on button press in CentralCheck.
+function CentralCheck_Callback(hObject, eventdata, handles)
+% hObject    handle to CentralCheck (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of CentralCheck
+checked = get(hObject,'Value');
+if checked
+    handles.channels = union(handles.channels, handles.regions.central);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
+else
+    handles.channels = setdiff(handles.channels, handles.regions.central);
+    handles.ChanTextBox.String = regexprep(num2str(handles.channels),' +',' ');
+    guidata(hObject, handles);
 end
