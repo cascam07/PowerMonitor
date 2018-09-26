@@ -71,6 +71,10 @@ handles.regions.r_temporal = [238,239,240,234,235,236,237,230,226,231,232,225,22
 eeglab
 handles.EEG = pop_loadset('EEG_Template.set');
 handles.EEG.chanlocs = readlocs('chanlocs_prop256.sfp');
+
+path1 = getenv('PATH');
+path1 = ['/anaconda3/bin/:' path1];
+setenv('PATH',path1);
 % Update handles structure
 guidata(hObject, handles);
 
@@ -409,10 +413,11 @@ if(exist(pathname, 'file') == 7)
             EEG.data = eegdat(handles.channels,:);
             EEG.chanlocs = EEG.chanlocs(handles.channels);
             EEG.times = eegtimes;
-            EEG = eeg_checkset(EEG);       
+            EEG = eeg_checkset(EEG); 
+            EEG.data = EEG.data * 10^6; %Convert from volts to microvolts
             EEG = pop_eegfiltnew(EEG, 0.5, 40);
             EEG = pop_reref(EEG, []);
-
+            
             %Calculate Power
             [dataPow, ff] = pwelch(EEG.data',round(EEG.srate/freqres),[],round(EEG.srate/freqres),EEG.srate);
             bandpower = mean(dataPow(Band(1):Band(2),:),1);
