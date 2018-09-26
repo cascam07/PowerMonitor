@@ -73,6 +73,10 @@ handles.EEG.chanlocs = readlocs('chanlocs_prop256.sfp');
 % Update handles structure
 guidata(hObject, handles);
 
+%Display channels that will be used for power calculation
+axes(handles.TopoAxis);
+topoplot([], handles.EEG.chanlocs(channels), 'style','blank','electrodes','labels')
+
 % UIWAIT makes powermonitor wait for user response (see UIRESUME)
 % uiwait(handles.figure1);
 
@@ -585,6 +589,7 @@ function ChanTextBox_Callback(hObject, eventdata, handles)
 %        str2double(get(hObject,'String')) returns contents of ChanTextBox as a double
 channels = str2num(hObject.String);
 if isempty(channels)
+    channels = 1:256;
     hObject.String = '1:256';
     warndlg('Input must be numeric');
 else
@@ -596,6 +601,11 @@ else
     handles.RTempCheck.Value = double(all(ismember(handles.regions.r_temporal,channels)));
     guidata(hObject, handles);
 end
+%Display channels that will be used for power calculation
+axes(handles.TopoAxis);
+cla
+topoplot([], handles.EEG.chanlocs(channels), 'style','blank','electrodes','labels')
+
 
 % --- Executes on button press in FrontalCheck.
 function FrontalCheck_Callback(hObject, eventdata, handles)
