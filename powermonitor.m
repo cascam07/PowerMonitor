@@ -422,6 +422,7 @@ if(exist(pathname, 'file') == 7)
             [dataPow, ff] = pwelch(EEG.data',round(EEG.srate/freqres),[],round(EEG.srate/freqres),EEG.srate);
             bandpower = mean(dataPow(Band(1):Band(2),:),1);
             avgpower = mean(bandpower);
+            avgpower = log10(avgpower);
 
             %Update data storage variables
             handles.data.power = [handles.data.power avgpower];
@@ -453,31 +454,33 @@ if(exist(pathname, 'file') == 7)
             else
                 nless = sum(pow < newpow);
                 nequal = sum(pow == newpow);
-                percentile = 100*(nless + 0.5*nequal)/length(pow)
+                percentile = 100*(nless + 0.5*nequal)/length(pow);
             end
           
             tab = {newpow, percentile, char(string(newtime))};
             tab = [tab; prevdata.Data];
-            if(size(tab,1) > 10) tab = tab(1:10,:); end %Only keep 10 most recent data points in table
-            handles.PrevDataTable.Data = tab;
+            if(size(tab,1) > 30) tab = tab(1:10,:); end %Keep 30 most recent data points in table
+            handles.PrevDataTable.Data = tab;           %Equiv. of 5 minutes of data sampled every 10 sec
 
             %Topoplot
             axes(handles.TopoAxis);
             cla
-            topoplot(bandpower, EEG.chanlocs); 
+            topoplot(log10(bandpower), EEG.chanlocs); 
             title(sprintf('Power %d - %d Hz',lowfreq,highfreq));
             colorbar;
 
             %Histogram
             axes(handles.HistAxis);
             histogram(handles.data.power, 15)
+            xlabel('Log10 Power');
             xlim(axislims)
 
             %Scatter Plot
             thrlist_contents = cellstr(handles.ThrListBox.String)';
             axes(handles.ScatterAxis);
             scatter(handles.data.times, handles.data.power); hold on;
-            thr_val = 100;
+            ylabel('Log10 Power');
+            thr_val = Inf;
             for thr_str = thrlist_contents %Add percentile threshold lines to plot
                 thr = str2num(cell2mat(thr_str));
                 if(isfield(handles,'LockIdx'))
