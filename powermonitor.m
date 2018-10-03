@@ -22,7 +22,7 @@ function varargout = powermonitor(varargin)
 
 % Edit the above text to modify the response to help powermonitor
 
-% Last Modified by GUIDE v2.5 26-Sep-2018 10:25:11
+% Last Modified by GUIDE v2.5 03-Oct-2018 10:43:15
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -62,12 +62,28 @@ handles.pyscript = 'GetMffData.py';
 handles.freqres = 0.5;
 handles.lockthr = false;
 handles.channels = 1:256;
+handles.watchlist = [];
 handles.regions.front = [2,3,4,5,10,11,12,13,14,15,18,19,20,21,22,25,26,27,28,29,31,32,33,34,35,37,38,39,46,47];
 handles.regions.central = [57,50,42,24,16,7,207,206,205,204,64,58,51,43,17,8,198,197,196,195,194,71,65,59,52,44,9,186,185,184,183,182,181,72,66,60,53,45,132,144,155,164,173,76,77,78,79,80,81,131,143,154,163,172,88,89,90,130,142];
 handles.regions.posterior = [96,97,98,110,119,128,152,161,170,106,107,108,109,140,151,160,169,114,115,116,117,118,127,139,150,159,168,122,123,124,125,126,138,149,158,167,135,136,137,148,157,147];
 handles.regions.l_temporal = [243,242,241,247,246,245,244,251,250,249,248,252,256,255,254,253,67,73,82,68,69,91,92,74,93,83,94,102,103,104,111];
 handles.regions.r_temporal = [238,239,240,234,235,236,237,230,226,231,232,225,227,233,219,228,218,210,229,217,202,192,216,191,209,190,201,189,200,208,199];
 
+% Tabs Code
+% Settings
+TabFontSize = 10;
+TabNames = {'Settings','Watch','Data'};
+FigWidth = .5;
+
+% Figure resize
+set(handles.figure1,'Units','normalized')
+pos = get(handles. figure1, 'Position');
+set(handles. figure1, 'Position', [pos(1) pos(2) FigWidth pos(4)])
+
+% Tabs Execution
+handles = TabsFun(handles,TabFontSize,TabNames);
+
+%Start EEGLab
 eeglab
 handles.EEG = pop_loadset('EEG_Template.set');
 handles.EEG.chanlocs = readlocs('chanlocs_prop256.sfp');
@@ -75,6 +91,9 @@ handles.EEG.chanlocs = readlocs('chanlocs_prop256.sfp');
 path1 = getenv('PATH');
 path1 = ['/anaconda3/bin/:' path1];
 setenv('PATH',path1);
+
+figure(handles.figure1)
+
 % Update handles structure
 guidata(hObject, handles);
 
@@ -344,7 +363,7 @@ function StartButton_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 pathname = handles.FilepathTextBox.String;
-if(exist(pathname, 'file') == 7)
+if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
     handles.PauseButton.Enable = 'on';
     handles.LockThrButton.Enable = 'on';
     handles.StartButton.Enable = 'off';
@@ -508,7 +527,7 @@ if(exist(pathname, 'file') == 7)
         handles = guidata(hObject); %Update handles to check if the loop needs to break
     end
 else
-    warndlg('Select a MFF file to monitor');
+    warndlg('Select a MFF file and frequency range to monitor');
 end
 
 
@@ -531,15 +550,12 @@ function ScatterAxis_CreateFcn(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
-% Hint: place code in OpeningFcn to populate ScatterAxis
-
 
 % --- Executes during object creation, after setting all properties.
 function TopoAxis_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to TopoAxis (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
-
 
 
 % --- Executes during object creation, after setting all properties.
@@ -555,26 +571,6 @@ function PrevDataTable_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to PrevDataTable (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
-
-
-% --- Executes when user attempts to close figure1.
-function figure1_CloseRequestFcn(hObject, eventdata, handles)
-% hObject    handle to figure1 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: delete(hObject) closes the figure
-selection = questdlg('Exit Program?','','Yes','No','');
-switch selection
-    case 'Yes'
-        if(isfield(handles,'logfile'))
-            fclose(handles.logfile);
-        end
-        delete(hObject);
-    case 'No'
-        return
-end
-
 
 % --- Executes during object creation, after setting all properties.
 function ChanTextBox_CreateFcn(hObject, eventdata, handles)
@@ -716,4 +712,159 @@ end
 function UpdateChannelPlot(handles)
 axes(handles.TopoAxis);
 cla
-topoplot([], handles.EEG.chanlocs(handles.channels), 'style','blank','electrodes','labels')
+topoplot([], handles.EEG.chanlocs(handles.channels), 'style','blank','electrodes','labels');
+
+
+
+% --- Executes on selection change in WatchListBox.
+function WatchListBox_Callback(hObject, eventdata, handles)
+% hObject    handle to WatchListBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: contents = cellstr(get(hObject,'String')) returns WatchListBox contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from WatchListBox
+
+
+% --- Executes during object creation, after setting all properties.
+function WatchListBox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to WatchListBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: listbox controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in AddWatchButton.
+% Add item to WatchListBox using the values currently set in LowFreqTextBox, HighFreqTextBox, and ChanTextBox
+function AddWatchButton_Callback(hObject, eventdata, handles)
+% hObject    handle to AddWatchButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+new_watch = [];
+new_watch.low_freq = str2num(handles.LowFreqTextBox.String);
+new_watch.high_freq = str2num(handles.HighFreqTextBox.String);
+new_watch.chans = str2num(handles.ChanTextBox.String);
+
+labelvec = ["F","C","L","R","P"];
+checkedvec = logical([handles.FrontalCheck.Value, handles.CentralCheck.Value, handles.LTempCheck.Value, handles.RTempCheck.Value, handles.PosteriorCheck.Value]);
+labelstr = join(labelvec(checkedvec),', ');
+if(ismissing(labelstr))
+    if(length(new_watch.chans) >= 5)
+        labelstr = [join(num2str(new_watch.chans(1:5))) '...'];       
+    else
+        labelstr = join(num2str(new_watch.chans(1:length(new_watch.chans))));
+    end
+end
+new_watch_str = sprintf('%d-%d Hz; %s', new_watch.low_freq, new_watch.high_freq, labelstr);
+
+watchlist_contents = cellstr(handles.WatchListBox.String)';
+new_contents = [watchlist_contents new_watch_str];
+handles.WatchListBox.String = new_contents;
+handles.watchlist = [handles.watchlist, new_watch];
+guidata(hObject, handles);
+
+% --- Executes on button press in RemWatchButton.
+% Remove selected item from WatchListBox
+function RemWatchButton_Callback(hObject, eventdata, handles)
+% hObject    handle to RemWatchButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+idx = handles.WatchListBox.Value;
+handles.WatchListBox.String(idx) = [];
+handles.watchlist(idx) = [];
+guidata(hObject, handles);
+
+
+function handles = TabsFun(handles,TabFontSize,TabNames)
+
+% Set the colors indicating a selected/unselected tab
+handles.selectedTabColor=get(handles.tab1Panel,'BackgroundColor');
+handles.unselectedTabColor=handles.selectedTabColor-0.1;
+
+% Create Tabs
+TabsNumber = length(TabNames);
+handles.TabsNumber = TabsNumber;
+TabColor = handles.selectedTabColor;
+for i = 1:TabsNumber
+    n = num2str(i);
+    
+    % Get text objects position
+    set(handles.(['tab',n,'text']),'Units','normalized')
+    pos=get(handles.(['tab',n,'text']),'Position');
+
+    % Create axes with callback function
+    handles.(['a',n]) = axes('Units','normalized',...
+                    'Box','on',...
+                    'XTick',[],...
+                    'YTick',[],...
+                    'Color',TabColor,...
+                    'Position',[pos(1) pos(2) pos(3) pos(4)+0.01],...
+                    'Tag',n,...
+                    'ButtonDownFcn',[mfilename,'(''ClickOnTab'',gcbo,[],guidata(gcbo))']);
+                    
+    % Create text with callback function
+    handles.(['t',n]) = text('String',TabNames{i},...
+                    'Units','normalized',...
+                    'Position',[pos(3),pos(2)/2+pos(4)],...
+                    'HorizontalAlignment','left',...
+                    'VerticalAlignment','middle',...
+                    'Margin',0.001,...
+                    'FontSize',TabFontSize,...
+                    'Backgroundcolor',TabColor,...
+                    'Tag',n,...
+                    'ButtonDownFcn',[mfilename,'(''ClickOnTab'',gcbo,[],guidata(gcbo))']);
+
+    TabColor = handles.unselectedTabColor;
+end
+            
+% Manage panels (place them in the correct position and manage visibilities)
+set(handles.tab1Panel,'Units','normalized')
+pan1pos=get(handles.tab1Panel,'Position');
+set(handles.tab1text,'Visible','off')
+for i = 2:TabsNumber
+    n = num2str(i);
+    set(handles.(['tab',n,'Panel']),'Units','normalized')
+    set(handles.(['tab',n,'Panel']),'Position',pan1pos)
+    set(handles.(['tab',n,'Panel']),'Visible','off')
+    set(handles.(['tab',n,'text']),'Visible','off')
+end
+
+% --- Callback function for clicking on tab
+function ClickOnTab(hObject,~,handles)
+m = str2double(get(hObject,'Tag'));
+
+for i = 1:handles.TabsNumber;
+    n = num2str(i);
+    if i == m
+        set(handles.(['a',n]),'Color',handles.selectedTabColor)
+        set(handles.(['t',n]),'BackgroundColor',handles.selectedTabColor)
+        set(handles.(['tab',n,'Panel']),'Visible','on')
+    else
+        set(handles.(['a',n]),'Color',handles.unselectedTabColor)
+        set(handles.(['t',n]),'BackgroundColor',handles.unselectedTabColor)
+        set(handles.(['tab',n,'Panel']),'Visible','off')
+    end
+end
+
+% --- Executes when user attempts to close figure1.
+function figure1_CloseRequestFcn(hObject, eventdata, handles)
+% hObject    handle to figure1 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: delete(hObject) closes the figure
+selection = questdlg('Exit Program?','','Yes','No','');
+switch selection
+    case 'Yes'
+        if(isfield(handles,'logfile'))
+            fclose(handles.logfile);
+        end
+        delete(hObject);
+    case 'No'
+        return
+end
