@@ -74,7 +74,7 @@ handles.regions.r_temporal = [238,239,240,234,235,236,237,230,226,231,232,225,22
 % Settings
 TabFontSize = 10;
 TabNames = {'Settings','Watch','Data'};
-FigWidth = .5;
+FigWidth = .85;
 
 % Figure resize
 set(handles.figure1,'Units','normalized')
@@ -435,7 +435,7 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
                
                 %Update data storage variables
                 watch.power = [watch.power avgpower];
-                watch.times = [watch.power avgpower];
+                watch.times = [watch.times currentTime];
                 watch.bandpower = bandpower;
                 
                 %Calculate percentile
@@ -462,8 +462,8 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             %Calculate data range to display
             axislims = [median(display_watch.power) - 3*mad(display_watch.power) median(display_watch.power) + 3*mad(display_watch.power)];
             if(axislims(1) >= axislims(2))
-                axislims(1) = axislims(1)/2;
-                axislims(2) = axislims(2)*2;
+                axislims(1) = -1;
+                axislims(2) = 1;
             end
             
             %Data table
@@ -473,8 +473,9 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             times = display_watch.times;
                                    
             %Update UI Table
-            tab = table(pow, display_watch.percentiles, times);
+            tab = table(pow', display_watch.percentiles', char(times));
             tab = sortrows(tab,3,'descend');
+            tab = table2cell(tab);
             if(size(tab,1) > 30) tab = tab(1:30,:); end %Keep 30 most recent data points in table
             handles.PrevDataTable.Data = tab;           %Equiv. of 5 minutes of data sampled every 10 sec
 
@@ -482,7 +483,7 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             axes(handles.TopoAxis);
             cla
             topoplot(log10(display_watch.bandpower), EEG.chanlocs); 
-            title(sprintf('Power %d - %d Hz',display_watch.lowfreq,display_watch.highfreq));
+            title(sprintf('Power %d - %d Hz',display_watch.low_freq,display_watch.high_freq));
             colorbar;
 
             %Histogram
@@ -518,9 +519,9 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             for iLog = 1:length(handles.loglist)
                log = handles.loglist(iLog);
                npow = handles.watchlist(iLog).power(end);
-               ntime = handles.watchlist(iLog).percentiles(end);
-               nperc = handles.watchlist(iLog).times(end);
-               fprintf(log, '%d, %d, %d\n',npow, nperc, ntime); 
+               nperc = handles.watchlist(iLog).percentiles(end);
+               ntime = handles.watchlist(iLog).times(end);
+               fprintf(log, '%d, %d, %s\n',npow, nperc, char(ntime)); 
             end
         end
         handles = guidata(hObject); %Update handles to check if the loop needs to break
@@ -768,7 +769,6 @@ mffname = strrep(mffname,'.mff','');
 logname = sprintf('%s_%d-%d_PowerLog_%d-%d-%d_%d-%d-%d.txt', mffname, new_watch.low_freq, new_watch.high_freq, currentTime(1), currentTime(2), currentTime(3), currentTime(4), currentTime(5), round(currentTime(6)));
 log = fopen(logname, 'wt');
 fprintf(log, 'Average Power (%d-%d Hz; %s),Percentile,Load Time\n', new_watch.low_freq, new_watch.high_freq, labelstr);
-fclose(log);
 
 %Update fields
 watchlist_contents = cellstr(handles.WatchListBox.String)';
@@ -787,6 +787,7 @@ function RemWatchButton_Callback(hObject, eventdata, handles)
 idx = handles.WatchListBox.Value;
 handles.WatchListBox.String(idx) = [];
 handles.watchlist(idx) = [];
+fclose(handles.loglist(idx));
 handles.loglist(idx) = [];
 guidata(hObject, handles);
 

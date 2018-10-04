@@ -2,6 +2,6 @@
 powermonitor.asv
 Times.csv
 Power.csv
-PowerLog*.txt
+*PowerLog*.txt
 *.m~
 .DS_Store
