@@ -63,6 +63,7 @@ handles.freqres = 0.5;
 handles.lockthr = false;
 handles.channels = 1:256;
 handles.watchlist = [];
+handles.loglist = [];
 handles.regions.front = [2,3,4,5,10,11,12,13,14,15,18,19,20,21,22,25,26,27,28,29,31,32,33,34,35,37,38,39,46,47];
 handles.regions.central = [57,50,42,24,16,7,207,206,205,204,64,58,51,43,17,8,198,197,196,195,194,71,65,59,52,44,9,186,185,184,183,182,181,72,66,60,53,45,132,144,155,164,173,76,77,78,79,80,81,131,143,154,163,172,88,89,90,130,142];
 handles.regions.posterior = [96,97,98,110,119,128,152,161,170,106,107,108,109,140,151,160,169,114,115,116,117,118,127,139,150,159,168,122,123,124,125,126,138,149,158,167,135,136,137,148,157,147];
@@ -375,32 +376,14 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
     handles.CentralCheck.Enable = 'off';
     handles.LTempCheck.Enable = 'off';
     handles.RTempCheck.Enable = 'off';
-    handles.PosteriorCheck.Enable = 'off';
-    
+    handles.PosteriorCheck.Enable = 'off';    
     handles.RunLoop = true;
     guidata(hObject, handles);
     
-    lowfreq = str2num(handles.LowFreqTextBox.String);
-    highfreq = str2num(handles.HighFreqTextBox.String);
+    %Monitor function
     freqres = handles.freqres;
-    Band = round([lowfreq/freqres+1 highfreq/freqres]);
     refreshrate = str2num(handles.RefreshRateTextBox.String);
     
-    %Create log file if it doesn't already exist
-    if(~isfield(handles,'logfile'))
-        currentTime = datevec(now);
-        if(exist(handles.OutpathTextBox.String, 'dir'))      
-            logname = sprintf('%s%sPowerLog_%d-%d-%d_%d-%d-%d.txt',handles.OutpathTextBox.String, filesep, currentTime(1), currentTime(2), currentTime(3), currentTime(4), currentTime(5), round(currentTime(6)));
-        else
-            logname = sprintf('PowerLog_%d-%d-%d_%d-%d-%d.txt',currentTime(1), currentTime(2), currentTime(3), currentTime(4), currentTime(5), round(currentTime(6)));
-        end
-        log = fopen(logname, 'wt');
-        fprintf(log, 'Average %s-%s Power,Percentile,Load Time\n',handles.LowFreqTextBox.String,handles.HighFreqTextBox.String);
-        handles.logfile = log;
-        guidata(hObject, handles);
-    end
-    
-    %Monitor function
     file = dir(handles.FilepathTextBox.String); 
     lastUpdated = file.date;
     startTime = datetime(clock);
@@ -439,17 +422,45 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             
             %Calculate Power
             [dataPow, ff] = pwelch(EEG.data',round(EEG.srate/freqres),[],round(EEG.srate/freqres),EEG.srate);
-            bandpower = mean(dataPow(Band(1):Band(2),:),1);
-            avgpower = mean(bandpower);
-            avgpower = log10(avgpower);
+            %Update data logs for each watch in watchlist
+            for iWatch = 1:length(handles.watchlist)
+                watch = handles.watchlist(iWatch);
+                lowfreq = watch.low_freq;              
+                highfreq = watch.high_freq;  
+                Band = round([lowfreq/freqres+1 highfreq/freqres]);
 
-            %Update data storage variables
-            handles.data.power = [handles.data.power avgpower];
-            handles.data.times = [handles.data.times currentTime];
-            guidata(hObject, handles);
+                bandpower = mean(dataPow(Band(1):Band(2),:),1);
+                avgpower = mean(bandpower);
+                avgpower = log10(avgpower);
+               
+                %Update data storage variables
+                watch.power = [watch.power avgpower];
+                watch.times = [watch.power avgpower];
+                watch.bandpower = bandpower;
+                
+                %Calculate percentile
+                if(isfield(handles,'LockIdx'))
+                    lockidx = handles.LockIdx;
+                    lockpow = watch.power(1:lockidx); 
+
+                    nless = sum(lockpow < avgpower);
+                    nequal = sum(lockpow == avgpower);
+                    percentile = 100*(nless + 0.5*nequal)/length(lockpow);
+                else
+                    nless = sum(watch.power < avgpower);
+                    nequal = sum(watch.power == avgpower);
+                    percentile = 100*(nless + 0.5*nequal)/length(watch.power);
+                end
+                watch.percentiles = [watch.percentiles percentile];
+                
+                %Update handles
+                handles.watchlist(iWatch) = watch;
+                guidata(hObject, handles);
+            end       
+            display_watch = handles.watchlist(handles.WatchListBox.Value);
             
             %Calculate data range to display
-            axislims = [median(handles.data.power) - 3*mad(handles.data.power) median(handles.data.power) + 3*mad(handles.data.power)];
+            axislims = [median(display_watch.power) - 3*mad(display_watch.power) median(display_watch.power) + 3*mad(display_watch.power)];
             if(axislims(1) >= axislims(2))
                 axislims(1) = axislims(1)/2;
                 axislims(2) = axislims(2)*2;
@@ -458,46 +469,32 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             %Data table
             prevdata = handles.PrevDataTable;
             
-            pow = handles.data.power;
-            times = handles.data.times;
-            newpow = pow(end);
-            newtime = times(end);           
-                        
-            if(isfield(handles,'LockIdx'))
-                lockidx = handles.LockIdx;
-                lockpow = pow(1:lockidx); 
-                
-                nless = sum(lockpow < newpow);
-                nequal = sum(lockpow == newpow);
-                percentile = 100*(nless + 0.5*nequal)/length(lockpow);
-            else
-                nless = sum(pow < newpow);
-                nequal = sum(pow == newpow);
-                percentile = 100*(nless + 0.5*nequal)/length(pow);
-            end
-          
-            tab = {newpow, percentile, char(string(newtime))};
-            tab = [tab; prevdata.Data];
-            if(size(tab,1) > 30) tab = tab(1:10,:); end %Keep 30 most recent data points in table
+            pow = display_watch.power;
+            times = display_watch.times;
+                                   
+            %Update UI Table
+            tab = table(pow, display_watch.percentiles, times);
+            tab = sortrows(tab,3,'descend');
+            if(size(tab,1) > 30) tab = tab(1:30,:); end %Keep 30 most recent data points in table
             handles.PrevDataTable.Data = tab;           %Equiv. of 5 minutes of data sampled every 10 sec
 
             %Topoplot
             axes(handles.TopoAxis);
             cla
-            topoplot(log10(bandpower), EEG.chanlocs); 
-            title(sprintf('Power %d - %d Hz',lowfreq,highfreq));
+            topoplot(log10(display_watch.bandpower), EEG.chanlocs); 
+            title(sprintf('Power %d - %d Hz',display_watch.lowfreq,display_watch.highfreq));
             colorbar;
 
             %Histogram
             axes(handles.HistAxis);
-            histogram(handles.data.power, 15)
+            histogram(display_watch.power, 15)
             xlabel('Log10 Power');
             xlim(axislims)
 
             %Scatter Plot
             thrlist_contents = cellstr(handles.ThrListBox.String)';
             axes(handles.ScatterAxis);
-            scatter(handles.data.times, handles.data.power); hold on;
+            scatter(display_watch.times, display_watch.power); hold on;
             ylabel('Log10 Power');
             thr_val = Inf;
             for thr_str = thrlist_contents %Add percentile threshold lines to plot
@@ -507,22 +504,24 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
                 else
                     thr_val = prctile(pow, thr);
                 end
-                line([min(handles.data.times) max(handles.data.times)],[thr_val thr_val], 'Color', 'black', 'LineStyle', '--');
+                line([min(display_watch.times) max(display_watch.times)],[thr_val thr_val], 'Color', 'black', 'LineStyle', '--');
             end
             %Plot data above threshold as red
-            color_points = handles.data.power > thr_val;
-            scatter(handles.data.times(color_points), handles.data.power(color_points),'r'); hold off;
+            color_points = display_watch.power > thr_val;
+            scatter(display_watch.times(color_points), display_watch.power(color_points),'r'); hold off;
             ylim(axislims)
 
             %Update GUI
             drawnow
             
             %Write output to log file
-            x = num2str(cell2mat(prevdata.Data(1,1))); %Current Power
-            y = num2str(cell2mat(prevdata.Data(1,2))); %Current Percentile
-            z = cell2mat(prevdata.Data(1,3));          %Current Time
-            fprintf(handles.logfile, '%s, %s, %s\n',x, y, z); 
-
+            for iLog = 1:length(handles.loglist)
+               log = handles.loglist(iLog);
+               npow = handles.watchlist(iLog).power(end);
+               ntime = handles.watchlist(iLog).percentiles(end);
+               nperc = handles.watchlist(iLog).times(end);
+               fprintf(log, '%d, %d, %d\n',npow, nperc, ntime); 
+            end
         end
         handles = guidata(hObject); %Update handles to check if the loop needs to break
     end
@@ -714,16 +713,11 @@ axes(handles.TopoAxis);
 cla
 topoplot([], handles.EEG.chanlocs(handles.channels), 'style','blank','electrodes','labels');
 
-
-
 % --- Executes on selection change in WatchListBox.
 function WatchListBox_Callback(hObject, eventdata, handles)
 % hObject    handle to WatchListBox (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-
-% Hints: contents = cellstr(get(hObject,'String')) returns WatchListBox contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from WatchListBox
 
 
 % --- Executes during object creation, after setting all properties.
@@ -749,7 +743,12 @@ new_watch = [];
 new_watch.low_freq = str2num(handles.LowFreqTextBox.String);
 new_watch.high_freq = str2num(handles.HighFreqTextBox.String);
 new_watch.chans = str2num(handles.ChanTextBox.String);
+new_watch.power = [];
+new_watch.times = [];
+new_watch.bandpower = [];
+new_watch.percentiles = [];
 
+%Build entry for watch list
 labelvec = ["F","C","L","R","P"];
 checkedvec = logical([handles.FrontalCheck.Value, handles.CentralCheck.Value, handles.LTempCheck.Value, handles.RTempCheck.Value, handles.PosteriorCheck.Value]);
 labelstr = join(labelvec(checkedvec),', ');
@@ -762,10 +761,21 @@ if(ismissing(labelstr))
 end
 new_watch_str = sprintf('%d-%d Hz; %s', new_watch.low_freq, new_watch.high_freq, labelstr);
 
+%Create log file
+currentTime = datevec(now);
+[~,mffname,~] = fileparts(handles.FilepathTextBox.String);
+mffname = strrep(mffname,'.mff','');
+logname = sprintf('%s_%d-%d_PowerLog_%d-%d-%d_%d-%d-%d.txt', mffname, new_watch.low_freq, new_watch.high_freq, currentTime(1), currentTime(2), currentTime(3), currentTime(4), currentTime(5), round(currentTime(6)));
+log = fopen(logname, 'wt');
+fprintf(log, 'Average Power (%d-%d Hz; %s),Percentile,Load Time\n', new_watch.low_freq, new_watch.high_freq, labelstr);
+fclose(log);
+
+%Update fields
 watchlist_contents = cellstr(handles.WatchListBox.String)';
 new_contents = [watchlist_contents new_watch_str];
 handles.WatchListBox.String = new_contents;
 handles.watchlist = [handles.watchlist, new_watch];
+handles.loglist = [handles.loglist, log];
 guidata(hObject, handles);
 
 % --- Executes on button press in RemWatchButton.
@@ -777,6 +787,7 @@ function RemWatchButton_Callback(hObject, eventdata, handles)
 idx = handles.WatchListBox.Value;
 handles.WatchListBox.String(idx) = [];
 handles.watchlist(idx) = [];
+handles.loglist(idx) = [];
 guidata(hObject, handles);
 
 
@@ -853,17 +864,19 @@ end
 
 % --- Executes when user attempts to close figure1.
 function figure1_CloseRequestFcn(hObject, eventdata, handles)
-% hObject    handle to figure1 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: delete(hObject) closes the figure
 selection = questdlg('Exit Program?','','Yes','No','');
 switch selection
     case 'Yes'
-        if(isfield(handles,'logfile'))
-            fclose(handles.logfile);
+        for iLog = 1:length(handles.loglist)
+            logname = fopen(handles.loglist(iLog));
+            fclose(handles.loglist(iLog));
+            try
+                [~,msg] = movefile(logname,handles.OutpathTextBox.String);
+            catch
+                sprintf('Failed to move %s to output directory: %s', logname, msg)
+            end
         end
+        
         delete(hObject);
     case 'No'
         return
