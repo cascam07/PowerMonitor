@@ -376,6 +376,8 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
     handles.CentralCheck.Enable = 'off';
     handles.LTempCheck.Enable = 'off';
     handles.RTempCheck.Enable = 'off';
+    handles.AddWatchButton.Enable = 'off';
+    handles.RemWatchButton.Enable = 'off';
     handles.PosteriorCheck.Enable = 'off';    
     handles.RunLoop = true;
     guidata(hObject, handles);
@@ -412,10 +414,10 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             
             %Update EEG object with most recent data
             EEG = handles.EEG;
-            EEG.data = eegdat(handles.channels,:);
-            EEG.chanlocs = EEG.chanlocs(handles.channels);
+            EEG.data = eegdat;
             EEG.times = eegtimes;
-            EEG = eeg_checkset(EEG); 
+            EEG = eeg_checkset(EEG);
+            EEG.chanlocs = handles.EEG.chanlocs;
             EEG.data = EEG.data * 10^6; %Convert from volts to microvolts
             EEG = pop_eegfiltnew(EEG, 0.5, 40);
             EEG = pop_reref(EEG, []);
@@ -429,7 +431,7 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
                 highfreq = watch.high_freq;  
                 Band = round([lowfreq/freqres+1 highfreq/freqres]);
 
-                bandpower = mean(dataPow(Band(1):Band(2),:),1);
+                bandpower = mean(dataPow(Band(1):Band(2),watch.chans),1);
                 avgpower = mean(bandpower);
                 avgpower = log10(avgpower);
                
@@ -482,8 +484,8 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             %Topoplot
             axes(handles.TopoAxis);
             cla
-            topoplot(log10(display_watch.bandpower), EEG.chanlocs); 
-            title(sprintf('Power %d - %d Hz',display_watch.low_freq,display_watch.high_freq));
+            topoplot(log10(display_watch.bandpower), EEG.chanlocs(display_watch.chans)); 
+            title(sprintf('Log10 Power %d - %d Hz',display_watch.low_freq,display_watch.high_freq));
             colorbar;
 
             %Histogram
@@ -538,6 +540,8 @@ function PauseButton_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 handles.PauseButton.Enable = 'off';
 handles.StartButton.Enable = 'on';
+handles.RemWatchButton.Enable = 'on';
+handles.AddWatchButton.Enable = 'on';
 handles.LowFreqTextBox.Enable = 'off';
 handles.HighFreqTextBox.Enable = 'off';
 handles.RefreshRateTextBox.Enable = 'off';
@@ -786,6 +790,9 @@ function RemWatchButton_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 idx = handles.WatchListBox.Value;
 handles.WatchListBox.String(idx) = [];
+if handles.WatchListBox.Value ~= 1
+    handles.WatchListBox.Value = handles.WatchListBox.Value - 1;
+end
 handles.watchlist(idx) = [];
 fclose(handles.loglist(idx));
 handles.loglist(idx) = [];
