@@ -350,9 +350,11 @@ switch selection
         handles.RemThrButton.Enable = 'off';
         handles.LockThrButton.Enable = 'off';
                 
-        handles.LockIdx = length(handles.data.power);
-        fprintf(handles.logfile, 'Threshold locked,Threshold locked,Threshold locked\n');
-        
+        handles.LockIdx = length(handles.watchlist(1).power);
+        for iLog = 1:length(handles.loglist)
+           log = handles.loglist(iLog);
+           fprintf(log, 'Threshold locked,Threshold locked,Threshold locked\n'); 
+        end        
         guidata(hObject, handles);
     case 'No'
         return
@@ -503,7 +505,7 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             for thr_str = thrlist_contents %Add percentile threshold lines to plot
                 thr = str2num(cell2mat(thr_str));
                 if(isfield(handles,'LockIdx'))
-                    thr_val = prctile(lockpow, thr);
+                    thr_val = prctile(pow(1:handles.LockIdx), thr);
                 else
                     thr_val = prctile(pow, thr);
                 end
