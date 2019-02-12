@@ -33,6 +33,7 @@ def GetMffData(mff_file, seglen):
     newdat = raw[:,raw.n_times-(seglen*int(sfreq)):raw.n_times-1]
     data = newdat[0]
     times = newdat[1]
+    raw.close()
 
     #Save raw data and sample times to csv files
     np.savetxt('Power.csv', data, delimiter=',')

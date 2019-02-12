@@ -22,7 +22,7 @@ function varargout = powermonitor(varargin)
 
 % Edit the above text to modify the response to help powermonitor
 
-% Last Modified by GUIDE v2.5 03-Oct-2018 10:43:15
+% Last Modified by GUIDE v2.5 14-Nov-2018 16:45:01
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -370,6 +370,7 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
     handles.PauseButton.Enable = 'on';
     handles.LockThrButton.Enable = 'on';
     handles.StartButton.Enable = 'off';
+    handles.RatioButton.Enable = 'off';
     handles.LowFreqTextBox.Enable = 'off';
     handles.HighFreqTextBox.Enable = 'off';
     handles.RefreshRateTextBox.Enable = 'off';
@@ -382,6 +383,7 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
     handles.RemWatchButton.Enable = 'off';
     handles.PosteriorCheck.Enable = 'off';    
     handles.RunLoop = true;
+    handles.WatchListBox.Max = 1;
     guidata(hObject, handles);
     
     %Monitor function
@@ -424,18 +426,43 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             EEG = pop_eegfiltnew(EEG, 0.5, 40);
             EEG = pop_reref(EEG, []);
             
+            %Detect bad channels to remove
+            stdData = mad(EEG.data, 0, 2)
+            badchans = find(isoutlier(stdData));
+            
             %Calculate Power
             [dataPow, ff] = pwelch(EEG.data',round(EEG.srate/freqres),[],round(EEG.srate/freqres),EEG.srate);
             %Update data logs for each watch in watchlist
             for iWatch = 1:length(handles.watchlist)
                 watch = handles.watchlist(iWatch);
-                lowfreq = watch.low_freq;              
-                highfreq = watch.high_freq;  
-                Band = round([lowfreq/freqres+1 highfreq/freqres]);
+                if(isempty(watch.ratio))
+                    goodchans = watch.chans(~ismember(watch.chans, badchans));
+                    lowfreq = watch.low_freq;              
+                    highfreq = watch.high_freq;  
+                    Band = round([lowfreq/freqres+1 highfreq/freqres]);
 
-                bandpower = mean(dataPow(Band(1):Band(2),watch.chans),1);
-                avgpower = mean(bandpower);
-                avgpower = log10(avgpower);
+                    bandpower = mean(dataPow(Band(1):Band(2),goodchans),1);
+                    avgpower = mean(bandpower);
+                    avgpower = log10(avgpower);
+                else
+                    num_goodchans = watch.ratio.numer.chans(~ismember(watch.ratio.numer.chans, badchans));
+                    num_lowfreq = watch.ratio.numer.low_freq;              
+                    num_highfreq = watch.ratio.numer.high_freq;  
+                    num_Band = round([num_lowfreq/freqres+1 num_highfreq/freqres]);
+                    bandpower = mean(dataPow(num_Band(1):num_Band(2),num_goodchans),1);
+                    numerpower = mean(bandpower);
+                    numerpower = log10(numerpower);
+                    
+                    denom_goodchans = watch.ratio.denom.chans(~ismember(watch.ratio.denom.chans, badchans));
+                    denom_lowfreq = watch.ratio.denom.low_freq;              
+                    denom_highfreq = watch.ratio.denom.high_freq;  
+                    denom_Band = round([denom_lowfreq/freqres+1 denom_highfreq/freqres]);
+                    bandpower = mean(dataPow(denom_Band(1):denom_Band(2),denom_goodchans),1);
+                    denompower = mean(bandpower);
+                    denompower = log10(denompower);
+                    
+                    avgpower = numerpower - denompower; %log(num) - log(denom) = log(num/denom)
+                end
                
                 %Update data storage variables
                 watch.power = [watch.power avgpower];
@@ -486,13 +513,13 @@ if(exist(pathname, 'file') == 7 && ~isempty(handles.watchlist))
             %Topoplot
             axes(handles.TopoAxis);
             cla
-            topoplot(log10(display_watch.bandpower), EEG.chanlocs(display_watch.chans)); 
+            topoplot(log10(display_watch.bandpower), EEG.chanlocs(display_watch.chans(~ismember(display_watch.chans, badchans)))); 
             title(sprintf('Log10 Power %d - %d Hz',display_watch.low_freq,display_watch.high_freq));
             colorbar;
 
             %Histogram
             axes(handles.HistAxis);
-            histogram(display_watch.power, 15)
+            histogram(display_watch.power, 30)
             xlabel('Log10 Power');
             xlim(axislims)
 
@@ -542,6 +569,7 @@ function PauseButton_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 handles.PauseButton.Enable = 'off';
 handles.StartButton.Enable = 'on';
+handles.RatioButton.Enable = 'on';
 handles.RemWatchButton.Enable = 'on';
 handles.AddWatchButton.Enable = 'on';
 handles.LowFreqTextBox.Enable = 'off';
@@ -754,6 +782,7 @@ new_watch.power = [];
 new_watch.times = [];
 new_watch.bandpower = [];
 new_watch.percentiles = [];
+new_watch.ratio = [];
 
 %Build entry for watch list
 labelvec = ["F","C","L","R","P"];
@@ -891,3 +920,52 @@ switch selection
     case 'No'
         return
 end
+
+
+% --- Executes on button press in RatioButton.
+function RatioButton_Callback(hObject, eventdata, handles)
+% hObject    handle to RatioButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+idx = handles.WatchListBox.Value;
+if(length(idx) ~= 2)
+    warndlg('Must select 2 watch list items');
+else
+    numerator = handles.watchlist(idx(1));
+    denominator = handles.watchlist(idx(2));
+    
+    new_watch = [];
+    new_watch.low_freq = 999;
+    new_watch.high_freq = 999;
+    new_watch.chans = denominator.chans;
+    new_watch.power = [];
+    new_watch.times = [];
+    new_watch.bandpower = [];
+    new_watch.percentiles = [];
+    new_watch.ratio.numer = numerator;
+    new_watch.ratio.denom = denominator;
+    
+    new_watch_str = sprintf('Item(%d)/Item(%d) Ratio', idx(1), idx(2));
+
+    %Create log file
+    currentTime = datevec(now);
+    [~,mffname,~] = fileparts(handles.FilepathTextBox.String);
+    mffname = strrep(mffname,'.mff','');
+    logname = sprintf('%s_Item%d-Item%d_Ratio_PowerLog_%d-%d-%d_%d-%d-%d.txt', mffname, idx(1), idx(2), currentTime(1), currentTime(2), currentTime(3), currentTime(4), currentTime(5), round(currentTime(6)));
+    log = fopen(logname, 'wt');
+    fprintf(log, 'Average,Item%d-Item%d_Ratio,Percentile,Load Time\n', idx(1), idx(2));
+    
+    %Update fields
+    watchlist_contents = cellstr(handles.WatchListBox.String)';
+    new_contents = [watchlist_contents new_watch_str];
+    handles.WatchListBox.String = new_contents;
+    handles.watchlist = [handles.watchlist, new_watch];
+    handles.loglist = [handles.loglist, log];
+    guidata(hObject, handles);
+end
+
+
+
+
+
